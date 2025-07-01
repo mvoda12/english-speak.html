@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English Speak - Изучение английского языка</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+        
+        const EnglishSpeakApp = () => {
+          // Простые состояния
+          const [currentPhrase, setCurrentPhrase] = useState(null);
+          const [showTranslation, setShowTranslation] = useState(false);
+          const [textInput, setTextInput] = useState('');
+          const [isRecording, setIsRecording] = useState(false);
+          const [messages, setMessages] = useState([]);
+          
+          // Refs
+          const recognitionRef = useRef(null);
+          const synthRef = useRef(null);
+
+          // Фразы уровня B1
+          const phrases = [
+            { en: "I have been studying English for two years", ru: "Я изучаю английский уже два года" },
+            { en: "If I were you, I would try harder", ru: "На вашем месте я бы больше старался" },
+            { en: "I'm looking forward to hearing from you", ru: "Жду вашего ответа" },
+            { en: "Could you please explain this again?", ru: "Не могли бы вы объяснить это еще раз?" },
+            { en: "I'm not sure what you mean", ru: "Я не уверен, что вы имеете в виду" },
+            { en: "What do you think about this idea?", ru: "Что вы думаете об этой идее?" },
+            { en: "I completely agree with you", ru: "Я полностью с вами согласен" },
+            { en: "That's an interesting point of view", ru: "Это интересная точка зрения" },
+            { en: "I'd like to make a suggestion", ru: "Я хотел бы внести предложение" },
+            { en: "Could we schedule a meeting for next week?", ru: "Не могли бы мы назначить встречу на следующую неделю?" }
+          ];
+
+          // Инициализация при загрузке
+          useEffect(() => {
+            // Получаем первую фразу
+            getNewPhrase();
+            
+            // Настройка синтеза речи
+            if ('speechSynthesis' in window) {
+              synthRef.current = window.speechSynthesis;
+            }
+
+            // Настройка распознавания речи
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+              const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+              const recognition = new SpeechRecognition();
+              
+              recognition.continuous = false;
+              recognition.interimResults = false;
+              recognition.lang = 'en-US';
+              recognition.maxAlternatives = 1;
+              
+              recognition.onstart = () => {
+                console.log('Speech recognition started');
+                setIsRecording(true);
+              };
+              
+              recognition.onresult = (event) => {
+                console.log('Speech recognition result:', event);
+                if (event.results && event.results.length > 0) {
+                  const transcript = event.results[0][0].transcript;
+                  console.log('Recognized text:', transcript);
+                  setTextInput(transcript);
+                } else {
+                  console.log('No speech results');
+                }
+              };
+              
+              recognition.onend = () => {
+                console.log('Speech recognition ended');
+                setIsRecording(false);
+              };
+              
+              recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event);
+                setIsRecording(false);
+                
+                let errorMessage = 'Microphone error: ';
+                switch(event.error) {
+                  case 'no-speech':
+                    errorMessage += 'No speech detected. Please try again.';
+                    break;
+                  case 'audio-capture':
+                    errorMessage += 'No microphone found.';
+                    break;
+                  case 'not-allowed':
+                    errorMessage += 'Microphone access denied.';
+                    break;
+                  case 'network':
+                    errorMessage += 'Network error occurred.';
+                    break;
+                  default:
+                    errorMessage += event.error;
+                }
+                alert(errorMessage);
+              };
+              
+              recognitionRef.current = recognition;
+              console.log('Speech recognition initialized successfully');
+            } else {
+              console.log('Speech recognition not supported in this browser');
+            }
+          }, []);
+
+          // Получить новую фразу
+          const getNewPhrase = () => {
+            const randomIndex = Math.floor(Math.random() * phrases.length);
+            setCurrentPhrase(phrases[randomIndex]);
+            setShowTranslation(false);
+          };
+
+          // Озвучить фразу
+          const speakPhrase = () => {
+            if (synthRef.current && currentPhrase) {
+              synthRef.current.cancel();
+              const utterance = new SpeechSynthesisUtterance(currentPhrase.en);
+              utterance.lang = 'en-US';
+              utterance.rate = 0.8;
+              synthRef.current.speak(utterance);
+            }
+          };
+
+          // Запуск записи
+          const startRecording = async () => {
+            console.log('Попытка запуска микрофона...');
+            
+            // Проверяем поддержку браузера
+            if (!recognitionRef.current) {
+              alert('Speech recognition not supported. Please use Chrome browser.');
+              return;
+            }
+
+            // Проверяем, не записываем ли уже
+            if (isRecording) {
+              console.log('Already recording, stopping...');
+              recognitionRef.current.stop();
+              return;
+            }
+
+            try {
+              // Запрашиваем разрешение на микрофон
+              console.log('Requesting microphone permission...');
+              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              console.log('Microphone permission granted');
+              
+              // Останавливаем поток (нам нужно только разрешение)
+              stream.getTracks().forEach(track => track.stop());
+              
+              // Запускаем распознавание
+              console.log('Starting speech recognition...');
+              recognitionRef.current.start();
+              
+            } catch (error) {
+              console.error('Microphone error:', error);
+              if (error.name === 'NotAllowedError') {
+                alert('Microphone access denied. Please allow microphone access in browser settings.');
+              } else if (error.name === 'NotFoundError') {
+                alert('No microphone found. Please connect a microphone.');
+              } else {
+                alert('Microphone error: ' + error.message);
+              }
+              setIsRecording(false);
+            }
+          };
+
+          // Отправить сообщение
+          const sendMessage = () => {
+            if (textInput.trim() && currentPhrase) {
+              const newMessage = {
+                text: textInput.trim(),
+                phrase: currentPhrase,
+                time: new Date().toLocaleTimeString(),
+                date: new Date().toLocaleDateString()
+              };
+              
+              const updatedMessages = [...messages, newMessage];
+              setMessages(updatedMessages);
+              
+              setTextInput('');
+              
+              // Новая фраза через секунду
+              setTimeout(getNewPhrase, 1000);
+            }
+          };
+
+          // Обработка нажатия Enter
+          const handleKeyDown = (e) => {
+            if (e.key === 'Enter') {
+              sendMessage();
+            }
+          };
+
+          return React.createElement('div', { className: "min-h-screen bg-gray-100 p-4" },
+            React.createElement('div', { className: "max-w-4xl mx-auto" },
+              
+              // Заголовок
+              React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
+                React.createElement('h1', { className: "text-3xl font-bold text-gray-800 mb-2" }, "English Speak"),
+                React.createElement('p', { className: "text-gray-600" }, 
+                  "Уровень: ", 
+                  React.createElement('span', { className: "font-semibold text-blue-600" }, "B1")
+                )
+              ),
+
+              // Диагностика микрофона
+              React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
+                React.createElement('h3', { className: "font-semibold text-gray-800 mb-4" }, "🎤 Microphone Test & Info:"),
+                
+                React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4 text-sm" },
+                  React.createElement('div', null,
+                    React.createElement('strong', null, "Browser Support:"),
+                    React.createElement('br'),
+                    "Speech Recognition: ", ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) ? '✅ Supported' : '❌ Not Supported',
+                    React.createElement('br'),
+                    "MediaDevices API: ", ('mediaDevices' in navigator) ? '✅ Supported' : '❌ Not Supported'
+                  ),
+                  React.createElement('div', null,
+                    React.createElement('strong', null, "Recording Status:"),
+                    React.createElement('br'),
+                    "Currently Recording: ", isRecording ? '🔴 YES' : '⚪ NO',
+                    React.createElement('br'),
+                    "Recognition Object: ", recognitionRef.current ? '✅ Ready' : '❌ Not Ready'
+                  )
+                ),
+                
+                React.createElement('button', {
+                  onClick: () => {
+                    console.log('Testing microphone access...');
+                    navigator.mediaDevices.getUserMedia({ audio: true })
+                      .then(stream => {
+                        alert('✅ Microphone access works! You can use voice input.');
+                        stream.getTracks().forEach(track => track.stop());
+                      })
+                      .catch(error => {
+                        alert('❌ Microphone test failed: ' + error.message);
+                      });
+                  },
+                  className: "mt-4 bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 transition-colors"
+                }, "Test Microphone Access")
+              ),
+
+              // Текущая фраза
+              currentPhrase && React.createElement('div', { className: "bg-blue-50 rounded-lg p-6 mb-6" },
+                React.createElement('div', { className: "flex justify-between items-center mb-4" },
+                  React.createElement('h2', { className: "text-xl font-semibold text-gray-800" }, "Изучаем фразу:"),
+                  React.createElement('button', {
+                    onClick: speakPhrase,
+                    className: "bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors"
+                  }, "🔊")
+                ),
+                
+                React.createElement('div', { className: "text-lg font-medium text-blue-800 mb-3" }, currentPhrase.en),
+                
+                React.createElement('button', {
+                  onClick: () => setShowTranslation(!showTranslation),
+                  className: "text-blue-600 hover:text-blue-800 underline text-sm"
+                }, showTranslation ? 'Скрыть перевод' : 'Показать перевод'),
+                
+                showTranslation && React.createElement('div', { className: "text-gray-600 mt-2 italic" }, currentPhrase.ru)
+              ),
+
+              // Поле ввода
+              React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
+                React.createElement('h3', { className: "font-semibold text-gray-800 mb-4" }, "Ваш ответ:"),
+                
+                // Простое поле ввода
+                React.createElement('div', { className: "mb-4" },
+                  React.createElement('input', {
+                    type: "text",
+                    value: textInput,
+                    onChange: (e) => setTextInput(e.target.value),
+                    onKeyDown: handleKeyDown,
+                    placeholder: "Введите ваш ответ здесь...",
+                    className: "w-full p-4 text-lg border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  })
+                ),
+
+                // Кнопки
+                React.createElement('div', { className: "flex flex-wrap gap-3" },
+                  React.createElement('button', {
+                    onClick: startRecording,
+                    disabled: isRecording,
+                    className: `flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
+                      isRecording 
+                        ? 'bg-red-500 text-white animate-pulse cursor-not-allowed' 
+                        : 'bg-green-500 text-white hover:bg-green-600'
+                    }`
+                  }, "🎤 ", isRecording ? 'Записываю...' : 'Записать голос'),
+                  
+                  React.createElement('button', {
+                    onClick: sendMessage,
+                    disabled: !textInput.trim(),
+                    className: `flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
+                      textInput.trim() 
+                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`
+                  }, "📤 Отправить"),
+                  
+                  React.createElement('button', {
+                    onClick: getNewPhrase,
+                    className: "flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  }, "🔄 Новая фраза"),
+                  
+                  React.createElement('button', {
+                    onClick: () => {
+                      setMessages([]);
+                      alert('История очищена!');
+                    },
+                    className: "flex items-center gap-2 px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  }, "🗑️ Очистить историю")
+                ),
+
+                // Статус записи
+                isRecording && React.createElement('div', { className: "mt-4 p-4 bg-red-50 border-2 border-red-200 rounded-lg text-center" },
+                  React.createElement('div', { className: "text-red-700 font-bold" }, "🎤 ГОВОРИТЕ СЕЙЧАС"),
+                  React.createElement('div', { className: "text-red-600 text-sm mt-1" }, "Произносите четко на английском языке")
+                )
+              ),
+
+              // История сообщений
+              messages.length > 0 && React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6" },
+                React.createElement('h3', { className: "font-semibold text-gray-800 mb-4" }, "История ответов:"),
+                React.createElement('div', { className: "space-y-4 max-h-60 overflow-y-auto" },
+                  messages.map((msg, index) =>
+                    React.createElement('div', { key: index, className: "bg-gray-50 p-4 rounded-lg border-l-4 border-blue-500" },
+                      React.createElement('div', { className: "text-sm text-gray-500 mb-1" }, msg.time),
+                      React.createElement('div', { className: "text-blue-800 font-medium mb-1" }, "Фраза: ", msg.phrase.en),
+                      React.createElement('div', { className: "text-gray-600 text-sm mb-2" }, "Перевод: ", msg.phrase.ru),
+                      React.createElement('div', { className: "text-green-700 font-medium" }, "Ваш ответ: ", msg.text)
+                    )
+                  )
+                )
+              ),
+
+              // Инструкция
+              React.createElement('div', { className: "mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg" },
+                React.createElement('h4', { className: "font-semibold text-yellow-800 mb-2" }, "💡 Как пользоваться:"),
+                React.createElement('ul', { className: "text-yellow-700 text-sm space-y-1" },
+                  React.createElement('li', null, "• Нажмите 🔊 чтобы услышать фразу"),
+                  React.createElement('li', null, "• Покажите перевод если нужно"),
+                  React.createElement('li', null, "• Введите свой ответ в поле или используйте микрофон"),
+                  React.createElement('li', null, "• Нажмите Enter или \"Отправить\""),
+                  React.createElement('li', null, "• Получите новую фразу для изучения")
+                )
+              )
+            )
+          );
+        };
+
+        ReactDOM.render(React.createElement(EnglishSpeakApp), document.getElementById('root'));
+    </script>
+</body>
+</html>
